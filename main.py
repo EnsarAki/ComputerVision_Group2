@@ -36,15 +36,17 @@ if __name__ == '__main__':
     cov_matrix = np.array([[sigma, 0], [0, sigma]])
     img_density = np.zeros((158, 238))
     mean = np.zeros(2)
+    mv_array = np.zeros(2)
 
-    for vidNum in range(1, 10):
-        for frameNum in range(1, 201):
+    for vidNum in range(1, 2):
+        for frameNum in range(1, 2):
             img = loadImage(vidNum, frameNum)
             location = loadFrameLoc(vidNum, frameNum)
             for loc in location:
                 mean.put([0, 1], [math.floor(loc[1]), math.floor(loc[0])])
                 for i in range(158):
                     for j in range(238):
-                        img_density[i, j] = img_density[i, j] + multivariate_normal.pdf([i, j], mean, cov_matrix)
+                        mv_array.put([0, 1], [i, j])
+                        img_density[i, j] = img_density[i, j] + multivariate_normal.pdf(mv_array, mean, cov_matrix)
             mpimg.imsave(f'vidf-cvpr-density-map/vidf1_33_{vidNum}_f{frameNum}.png', img_density)
 
