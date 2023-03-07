@@ -34,12 +34,12 @@ def loadImage(vidNum, frameNum):
 if __name__ == '__main__':
     sigma = 5
     cov_matrix = np.array([[sigma, 0], [0, sigma]])
-    img_density = np.zeros((158, 238))
     mean = np.zeros(2)
     mv_array = np.zeros(2)
 
     for vidNum in range(1, 2):
-        for frameNum in range(1, 2):
+        for frameNum in range(1, 10):
+            img_density = np.zeros((158, 238))
             img = loadImage(vidNum, frameNum)
             location = loadFrameLoc(vidNum, frameNum)
             for loc in location:
