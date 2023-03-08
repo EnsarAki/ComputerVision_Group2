@@ -47,6 +47,13 @@ def gaussian_filter_density(gt):
         return density
 
     pts = np.array(list(zip(np.nonzero(gt)[1], np.nonzero(gt)[0])))
+    leafsize = 2048
+    # build kdtree
+    tree = KDTree(pts.copy(), leafsize=leafsize)
+    # query kdtree
+    distances, locations = tree.query(pts, k=4)
+
+    pts = np.array(list(zip(np.nonzero(gt)[1], np.nonzero(gt)[0])))
     Dmap = np.flip(loadDmap())
 
     for i, pt in enumerate(pts):
@@ -54,7 +61,8 @@ def gaussian_filter_density(gt):
         pt2d[pt[1], pt[0]] = 1.
         if gt_count > 1:
             # sigma = Dmap[pt[1], pt[0]]*0.3
-            sigma = 4.8
+             sigma = 4.5
+            # sigma = (distances[i][1] + distances[i][2] + distances[i][3]) * 0.1
         else:
             sigma = np.average(np.array(gt.shape))/2./2.
         density += gaussian_filter(pt2d, sigma, mode='constant')
@@ -79,6 +87,6 @@ if __name__ == '__main__':
 
             # plt.imshow(img_density, cmap=CM.jet)
             # plt.show()
-
+            # print(location.shape[0] - np.sum(img_density))
             mpimg.imsave(f'vidf-cvpr-density-map/vidf1_33_{vidNum}_f{frameNum}.png', img_density, cmap=CM.jet)
 
