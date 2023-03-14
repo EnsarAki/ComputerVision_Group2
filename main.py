@@ -9,12 +9,22 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from matplotlib import cm as CM
 from scipy.stats import multivariate_normal
+from PIL import Image
+import re
+import tensorflow as tf
+from tensorflow import keras
+from keras import layers
+
+import io
+import imageio
+from ipywidgets import widgets, Layout, HBox
 
 
 def loadFrameLoc(vidNum, frameNum):
     # Checking if video and frame number is lower than 1
     if frameNum < 1 or vidNum < 1:
         print("Video or frame number smaller than 1 does not exist.")
+        return
     # Formatting video number for loading
     vidNum = "{0:0=3d}".format(vidNum - 1)
 
@@ -34,11 +44,23 @@ def loadImage(vidNum, frameNum):
     # Checking if video and frame number is lower than 1
     if frameNum < 1 or vidNum < 1:
         print("Video or frame number smaller than 1 does not exist.")
+        return
 
     # Formatting video number and frame number for loading
     vidNum = "{0:0=3d}".format(vidNum - 1)
     frameNum = "{0:0=3d}".format(frameNum)
     return mpimg.imread(f'ucsdpeds/vidf/vidf1_33_{vidNum}.y/vidf1_33_{vidNum}_f{frameNum}.png')
+
+def loadDensityMap(vidNum, frameNum):
+    # Checking if video and frame number is lower than 1
+    if frameNum < 1 or vidNum < 1:
+        print("Video or frame number smaller than 1 does not exist.")
+        return
+
+    # Formatting video number and frame number for loading
+    vidNum = "{0:0=1d}".format(vidNum - 1)
+    frameNum = "{0:0=1d}".format(frameNum)
+    return np.array(Image.open(f'vidf-cvpr-density-map/vidf1_33_{vidNum}_f{frameNum}.png').convert("L"))/255
 
 def gaussian_filter_density(gt):
     density = np.zeros(gt.shape, dtype=np.float32)
@@ -68,10 +90,7 @@ def gaussian_filter_density(gt):
         density += gaussian_filter(pt2d, sigma, mode='constant')
     return density
 
-
-if __name__ == '__main__':
-    loc_coordinates = np.zeros(2)
-
+def prepareImages():
     for vidNum in range(1, 11):
         for frameNum in range(1, 201):
             img_density = np.zeros((158, 238))
@@ -81,12 +100,118 @@ if __name__ == '__main__':
             for loc in location:
                 if int(loc[0]) < 238 and int(loc[1]) < 158:
                     img_density[int(loc[1]), int(loc[0])] = 1
-                else:
-                    print("Person removed")
+                # else:
+                    # print("Person removed")
             img_density = gaussian_filter_density(img_density)
 
             # plt.imshow(img_density, cmap=CM.jet)
             # plt.show()
             # print(location.shape[0] - np.sum(img_density))
-            mpimg.imsave(f'vidf-cvpr-density-map/vidf1_33_{vidNum}_f{frameNum}.png', img_density, cmap=CM.jet)
+
+            mpimg.imsave(f'vidf-cvpr-density-map/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}.y/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}_f{"{0:0=3d}".format(frameNum)}.png', img_density, format='png', cmap=CM.jet)
+
+
+def create_shifted_frames(data):
+    x = data[:, 0:data.shape[1] - 1, :, :]
+    y = data[:, 1:data.shape[1], :, :]
+    return x, y
+
+
+if __name__ == '__main__':
+
+    training_dataset = keras.utils.image_dataset_from_directory('ucsdpeds/vidf',
+                                                                image_size=(158, 238),
+                                                                color_mode="grayscale",
+                                                                shuffle=False,
+                                                                batch_size=200)
+
+    validation_dataset = keras.utils.image_dataset_from_directory('vidf-cvpr-density-map',
+                                                                  image_size=(158, 238),
+                                                                  color_mode="grayscale",
+                                                                  shuffle=False,
+                                                                  batch_size=200)
+
+    train_dataset = np.zeros((4, 200, 158, 238, 1))
+    val_dataset = np.zeros((4, 200, 158, 238, 1))
+
+    count = 0
+    for images, labels in training_dataset.take(7):
+        count += 1
+        if count < 4:
+            continue
+        train_dataset[count - 4] = images
+
+    count = 0
+    for images, labels in validation_dataset.take(7):
+        count += 1
+        if count < 4:
+            continue
+        val_dataset[count - 4] = images
+
+    x_train, y_train = create_shifted_frames(train_dataset)
+    x_val, y_val = create_shifted_frames(val_dataset)
+
+    print("Training Dataset Shapes: " + str(x_train.shape) + ", " + str(y_train.shape))
+    print("Validation Dataset Shapes: " + str(x_val.shape) + ", " + str(y_val.shape))
+
+    # Construct the input layer with no definite frame size.
+    inp = layers.Input(shape=(None, *x_train.shape[2:]))
+
+    # We will construct 3 `ConvLSTM2D` layers with batch normalization,
+    # followed by a `Conv3D` layer for the spatiotemporal outputs.
+    x = layers.ConvLSTM2D(
+        filters=64,
+        kernel_size=(5, 5),
+        padding="same",
+        return_sequences=True,
+        activation="relu",
+    )(inp)
+    x = layers.BatchNormalization()(x)
+    x = layers.ConvLSTM2D(
+        filters=64,
+        kernel_size=(3, 3),
+        padding="same",
+        return_sequences=True,
+        activation="relu",
+    )(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ConvLSTM2D(
+        filters=64,
+        kernel_size=(1, 1),
+        padding="same",
+        return_sequences=True,
+        activation="relu",
+    )(x)
+    x = layers.Conv3D(
+        filters=1, kernel_size=(3, 3, 3), activation="sigmoid", padding="same"
+    )(x)
+
+    # Next, we will build the complete model and compile it.
+    model = keras.models.Model(inp, x)
+    model.compile(
+        loss=keras.losses.binary_crossentropy, optimizer=keras.optimizers.Adam(),
+    )
+
+    # Define some callbacks to improve training.
+    early_stopping = keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)
+    reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=5)
+
+    # Define modifiable training hyperparameters.
+    epochs = 20
+    batch_size = 5
+
+    # Fit the model to the training data.
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=batch_size,
+        epochs=epochs,
+        validation_data=(x_val, y_val),
+        callbacks=[early_stopping, reduce_lr],
+    )
+
+    model.save('Model/trained_model')
+
+
+
 
