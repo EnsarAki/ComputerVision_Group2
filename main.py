@@ -123,30 +123,30 @@ if __name__ == '__main__':
                                                                 image_size=(158, 238),
                                                                 color_mode="grayscale",
                                                                 shuffle=False,
-                                                                batch_size=200)
+                                                                batch_size=10)
 
     validation_dataset = keras.utils.image_dataset_from_directory('vidf-cvpr-density-map',
                                                                   image_size=(158, 238),
                                                                   color_mode="grayscale",
                                                                   shuffle=False,
-                                                                  batch_size=200)
+                                                                  batch_size=10)
 
-    train_dataset = np.zeros((4, 200, 158, 238, 1))
-    val_dataset = np.zeros((4, 200, 158, 238, 1))
-
-    count = 0
-    for images, labels in training_dataset.take(7):
-        count += 1
-        if count < 4:
-            continue
-        train_dataset[count - 4] = images
+    train_dataset = np.zeros((80, 10, 158, 238, 1))
+    val_dataset = np.zeros((80, 10, 158, 238, 1))
 
     count = 0
-    for images, labels in validation_dataset.take(7):
+    for images, labels in training_dataset.take(139):
         count += 1
-        if count < 4:
+        if count < 60:
             continue
-        val_dataset[count - 4] = images
+        train_dataset[count - 60] = images
+
+    count = 0
+    for images, labels in validation_dataset.take(139):
+        count += 1
+        if count < 60:
+            continue
+        val_dataset[count - 60] = images
 
     x_train, y_train = create_shifted_frames(train_dataset)
     x_val, y_val = create_shifted_frames(val_dataset)
@@ -198,7 +198,7 @@ if __name__ == '__main__':
 
     # Define modifiable training hyperparameters.
     epochs = 20
-    batch_size = 5
+    batch_size = 2
 
     # Fit the model to the training data.
     model.fit(
