@@ -119,34 +119,48 @@ def create_shifted_frames(data):
 
 if __name__ == '__main__':
 
+    batch_size = 4
+    from_frame = int(600/batch_size)
+    to_frame = int(1400/batch_size)
+
     training_dataset = keras.utils.image_dataset_from_directory('ucsdpeds/vidf',
                                                                 image_size=(158, 238),
                                                                 color_mode="grayscale",
                                                                 shuffle=False,
-                                                                batch_size=10)
+                                                                batch_size=batch_size)
 
     validation_dataset = keras.utils.image_dataset_from_directory('vidf-cvpr-density-map',
                                                                   image_size=(158, 238),
                                                                   color_mode="grayscale",
                                                                   shuffle=False,
-                                                                  batch_size=10)
+                                                                  batch_size=batch_size)
 
-    train_dataset = np.zeros((80, 10, 158, 238, 1))
-    val_dataset = np.zeros((80, 10, 158, 238, 1))
-
-    count = 0
-    for images, labels in training_dataset.take(139):
-        count += 1
-        if count < 60:
-            continue
-        train_dataset[count - 60] = images
+    train_dataset = np.zeros((200, 4, 158, 238, 1))
+    val_dataset = np.zeros((200, 4, 158, 238, 1))
 
     count = 0
-    for images, labels in validation_dataset.take(139):
+    test = 0
+    for images, labels in training_dataset.take(to_frame):
         count += 1
-        if count < 60:
+        if count < (from_frame + 1):
             continue
-        val_dataset[count - 60] = images
+        # for i in range(batch_size):
+        #     print(training_dataset.class_names[labels[i]])
+        #     test += 1
+        train_dataset[count - (from_frame + 1)] = images
+    # print(f'Loaded a total of {test} images and {count - from_frame} batches to the training dataset')
+
+    count = 0
+    test = 0
+    for images, labels in validation_dataset.take(to_frame):
+        count += 1
+        if count < (from_frame + 1):
+            continue
+        # for i in range(batch_size):
+        #     print(validation_dataset.class_names[labels[i]])
+        #     test += 1
+        val_dataset[count - (from_frame + 1)] = images
+    # print(f'Loaded a total of {test} images and {count - from_frame} batches to the validation dataset')
 
     x_train, y_train = create_shifted_frames(train_dataset)
     x_val, y_val = create_shifted_frames(val_dataset)
@@ -198,7 +212,7 @@ if __name__ == '__main__':
 
     # Define modifiable training hyperparameters.
     epochs = 20
-    batch_size = 2
+    batch_size = 3
 
     # Fit the model to the training data.
     model.fit(
