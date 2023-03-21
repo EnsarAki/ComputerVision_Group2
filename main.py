@@ -108,7 +108,7 @@ def prepareImages():
             # plt.show()
             # print(location.shape[0] - np.sum(img_density))
 
-            mpimg.imsave(f'vidf-cvpr-density-map/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}.y/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}_f{"{0:0=3d}".format(frameNum)}.png', img_density, format='png', cmap=CM.jet)
+            mpimg.imsave(f'vidf-cvpr-density-map/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}.y/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}_f{"{0:0=3d}".format(frameNum)}.png', img_density, format='png', cmap="gray")
 
 
 def create_shifted_frames(data):
@@ -118,6 +118,7 @@ def create_shifted_frames(data):
 
 
 if __name__ == '__main__':
+    # prepareImages()
 
     batch_size = 4
     from_frame = int(600/batch_size)
@@ -137,16 +138,21 @@ if __name__ == '__main__':
 
     train_dataset = np.zeros((200, 4, 158, 238, 1))
     val_dataset = np.zeros((200, 4, 158, 238, 1))
+    test_training_dataset = np.zeros((150, 4, 158, 238, 1))
+    test_validation_dataset = np.zeros((150, 4, 158, 238, 1))
 
     count = 0
     test = 0
     for images, labels in training_dataset.take(to_frame):
         count += 1
         if count < (from_frame + 1):
+            images = tf.cast(images / 255., tf.float32)
+            test_training_dataset[count - (from_frame + 1)] = images
             continue
         # for i in range(batch_size):
         #     print(training_dataset.class_names[labels[i]])
         #     test += 1
+        images = tf.cast(images / 255., tf.float32)
         train_dataset[count - (from_frame + 1)] = images
     # print(f'Loaded a total of {test} images and {count - from_frame} batches to the training dataset')
 
@@ -155,26 +161,29 @@ if __name__ == '__main__':
     for images, labels in validation_dataset.take(to_frame):
         count += 1
         if count < (from_frame + 1):
+            images = tf.cast(images / 255., tf.float32)
+            test_validation_dataset[count - (from_frame + 1)] = images
             continue
         # for i in range(batch_size):
         #     print(validation_dataset.class_names[labels[i]])
         #     test += 1
+        images = tf.cast(images / 255., tf.float32)
         val_dataset[count - (from_frame + 1)] = images
     # print(f'Loaded a total of {test} images and {count - from_frame} batches to the validation dataset')
 
-    x_train, y_train = create_shifted_frames(train_dataset)
-    x_val, y_val = create_shifted_frames(val_dataset)
+    # x_train, y_train = create_shifted_frames(train_dataset)
+    # x_val, y_val = create_shifted_frames(val_dataset)
 
-    print("Training Dataset Shapes: " + str(x_train.shape) + ", " + str(y_train.shape))
-    print("Validation Dataset Shapes: " + str(x_val.shape) + ", " + str(y_val.shape))
+    print("Training Dataset Shapes: " + str(train_dataset.shape))
+    print("Validation Dataset Shapes: " + str(val_dataset.shape))
 
     # Construct the input layer with no definite frame size.
-    inp = layers.Input(shape=(None, *x_train.shape[2:]))
+    inp = layers.Input(shape=(None, *train_dataset.shape[2:]))
 
-    # We will construct 3 `ConvLSTM2D` layers with batch normalization,
+    # We will construct 4 `ConvLSTM2D` layers with batch normalization,
     # followed by a `Conv3D` layer for the spatiotemporal outputs.
     x = layers.ConvLSTM2D(
-        filters=64,
+        filters=128,
         kernel_size=(5, 5),
         padding="same",
         return_sequences=True,
@@ -183,7 +192,7 @@ if __name__ == '__main__':
     x = layers.BatchNormalization()(x)
     x = layers.ConvLSTM2D(
         filters=64,
-        kernel_size=(3, 3),
+        kernel_size=(5, 5),
         padding="same",
         return_sequences=True,
         activation="relu",
@@ -191,41 +200,78 @@ if __name__ == '__main__':
     x = layers.BatchNormalization()(x)
     x = layers.ConvLSTM2D(
         filters=64,
-        kernel_size=(1, 1),
+        kernel_size=(5, 5),
         padding="same",
         return_sequences=True,
         activation="relu",
     )(x)
-    x = layers.Conv3D(
-        filters=1, kernel_size=(3, 3, 3), activation="sigmoid", padding="same"
+    x = layers.BatchNormalization()(x)
+    x = layers.ConvLSTM2D(
+        filters=64,
+        kernel_size=(5, 5),
+        padding="same",
+        return_sequences=True,
+        activation="relu",
     )(x)
+
+    x = layers.Conv3D(filters=1, kernel_size=(1, 1, 1), activation="sigmoid", padding="same")(x)
 
     # Next, we will build the complete model and compile it.
     model = keras.models.Model(inp, x)
-    model.compile(
-        loss=keras.losses.binary_crossentropy, optimizer=keras.optimizers.Adam(),
-    )
+    model.compile(loss=keras.losses.binary_crossentropy, optimizer=keras.optimizers.Adam())
 
-    # Define some callbacks to improve training.
-    early_stopping = keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)
-    reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=5)
+    # # Define some callbacks to improve training.
+    # early_stopping = keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)
+    # reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=5)
 
     # Define modifiable training hyperparameters.
     epochs = 20
-    batch_size = 3
+    batch_size = 4
 
     # Fit the model to the training data.
     model.fit(
-        x_train,
-        y_train,
+        train_dataset,
+        val_dataset,
         batch_size=batch_size,
         epochs=epochs,
-        validation_data=(x_val, y_val),
-        callbacks=[early_stopping, reduce_lr],
+        #callbacks=[early_stopping, reduce_lr],
     )
 
     model.save('Model/trained_model')
 
+    model = keras.models.load_model('Model/trained_model')
 
+    # Pick the first/last four frames from the example.
+    frames = test_training_dataset[0]
+    original_frames = test_validation_dataset[0]
+
+    # Predict a new set of 4 frames.
+    for _ in range(4):
+        # Extract the model's prediction and post-process it.
+        new_prediction = model.predict(np.expand_dims(frames, axis=0))
+        new_prediction = np.squeeze(new_prediction, axis=0)
+        predicted_frame = np.expand_dims(new_prediction[-1, ...], axis=0)
+
+        # Extend the set of prediction frames.
+        frames = np.concatenate((frames, predicted_frame), axis=0)
+
+    # Construct a figure for the original and new frames.
+    fig, axes = plt.subplots(2, 4, figsize=(20, 4))
+
+    # Plot the original frames.
+    for idx, ax in enumerate(axes[0]):
+        ax.imshow(np.squeeze(original_frames[idx]), cmap="gray")
+        ax.set_title(f"Frame {idx}")
+        ax.axis("off")
+
+    # Plot the new frames.
+    new_frames = frames[4:, ...]
+    for idx, ax in enumerate(axes[1]):
+        ax.imshow(np.squeeze(new_frames[idx]), cmap="gray")
+        ax.set_title(f"Frame {idx}")
+        ax.axis("off")
+
+    # Display the figure.
+    plt.show()
 
 
