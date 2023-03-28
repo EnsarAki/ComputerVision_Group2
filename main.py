@@ -19,6 +19,13 @@ import io
 import imageio
 from ipywidgets import widgets, Layout, HBox
 
+def loadROI():
+    # Loading video ROI
+    mat_fname = pjoin('vidf-cvpr', f'vidf1_33_roi_mainwalkway.mat')
+    loadedROI = loadmat(mat_fname)
+    loadedROI = loadedROI['roi'][0][0][2]
+    return np.reshape(loadedROI, (loadedROI.shape[0], loadedROI.shape[1], 1))
+
 
 def loadFrameLoc(vidNum, frameNum):
     # Checking if video and frame number is lower than 1
@@ -49,7 +56,8 @@ def loadImage(vidNum, frameNum):
     # Formatting video number and frame number for loading
     vidNum = "{0:0=3d}".format(vidNum - 1)
     frameNum = "{0:0=3d}".format(frameNum)
-    return mpimg.imread(f'ucsdpeds/vidf/vidf1_33_{vidNum}.y/vidf1_33_{vidNum}_f{frameNum}.png')
+    loadedImage = mpimg.imread(f'ucsdpeds/vidf/vidf1_33_{vidNum}.y/vidf1_33_{vidNum}_f{frameNum}.png')
+    return np.reshape(loadedImage, (loadedImage.shape[0], loadedImage.shape[1], 1))
 
 def loadDensityMap(vidNum, frameNum):
     # Checking if video and frame number is lower than 1
@@ -83,7 +91,7 @@ def gaussian_filter_density(gt):
         pt2d[pt[1], pt[0]] = 1.
         if gt_count > 1:
             # sigma = Dmap[pt[1], pt[0]]*0.3
-             sigma = 4.5
+             sigma = 3
             # sigma = (distances[i][1] + distances[i][2] + distances[i][3]) * 0.1
         else:
             sigma = np.average(np.array(gt.shape))/2./2.
@@ -118,160 +126,161 @@ def create_shifted_frames(data):
 
 
 if __name__ == '__main__':
-    # prepareImages()
 
-    batch_size = 4
-    from_frame = int(600/batch_size)
-    to_frame = int(1400/batch_size)
+    prepareImages()
 
-    training_dataset = keras.utils.image_dataset_from_directory('ucsdpeds/vidf',
-                                                                image_size=(158, 238),
-                                                                color_mode="grayscale",
-                                                                shuffle=False,
-                                                                batch_size=batch_size)
-
-    validation_dataset = keras.utils.image_dataset_from_directory('vidf-cvpr-density-map',
-                                                                  image_size=(158, 238),
-                                                                  color_mode="grayscale",
-                                                                  shuffle=False,
-                                                                  batch_size=batch_size)
-
-    train_dataset = np.zeros((200, 4, 158, 238, 1))
-    val_dataset = np.zeros((200, 4, 158, 238, 1))
-    test_training_dataset = np.zeros((150, 4, 158, 238, 1))
-    test_validation_dataset = np.zeros((150, 4, 158, 238, 1))
-
-    count = 0
-    test = 0
-    for images, labels in training_dataset.take(to_frame):
-        count += 1
-        if count < (from_frame + 1):
-            images = tf.cast(images / 255., tf.float32)
-            test_training_dataset[count - (from_frame + 1)] = images
-            continue
-        # for i in range(batch_size):
-        #     print(training_dataset.class_names[labels[i]])
-        #     test += 1
-        images = tf.cast(images / 255., tf.float32)
-        train_dataset[count - (from_frame + 1)] = images
-    # print(f'Loaded a total of {test} images and {count - from_frame} batches to the training dataset')
-
-    count = 0
-    test = 0
-    for images, labels in validation_dataset.take(to_frame):
-        count += 1
-        if count < (from_frame + 1):
-            images = tf.cast(images / 255., tf.float32)
-            test_validation_dataset[count - (from_frame + 1)] = images
-            continue
-        # for i in range(batch_size):
-        #     print(validation_dataset.class_names[labels[i]])
-        #     test += 1
-        images = tf.cast(images / 255., tf.float32)
-        val_dataset[count - (from_frame + 1)] = images
-    # print(f'Loaded a total of {test} images and {count - from_frame} batches to the validation dataset')
-
-    # x_train, y_train = create_shifted_frames(train_dataset)
-    # x_val, y_val = create_shifted_frames(val_dataset)
-
-    print("Training Dataset Shapes: " + str(train_dataset.shape))
-    print("Validation Dataset Shapes: " + str(val_dataset.shape))
-
-    # Construct the input layer with no definite frame size.
-    inp = layers.Input(shape=(None, *train_dataset.shape[2:]))
-
-    # We will construct 4 `ConvLSTM2D` layers with batch normalization,
-    # followed by a `Conv3D` layer for the spatiotemporal outputs.
-    x = layers.ConvLSTM2D(
-        filters=128,
-        kernel_size=(5, 5),
-        padding="same",
-        return_sequences=True,
-        activation="relu",
-    )(inp)
-    x = layers.BatchNormalization()(x)
-    x = layers.ConvLSTM2D(
-        filters=64,
-        kernel_size=(5, 5),
-        padding="same",
-        return_sequences=True,
-        activation="relu",
-    )(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ConvLSTM2D(
-        filters=64,
-        kernel_size=(5, 5),
-        padding="same",
-        return_sequences=True,
-        activation="relu",
-    )(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ConvLSTM2D(
-        filters=64,
-        kernel_size=(5, 5),
-        padding="same",
-        return_sequences=True,
-        activation="relu",
-    )(x)
-
-    x = layers.Conv3D(filters=1, kernel_size=(1, 1, 1), activation="sigmoid", padding="same")(x)
-
-    # Next, we will build the complete model and compile it.
-    model = keras.models.Model(inp, x)
-    model.compile(loss=keras.losses.binary_crossentropy, optimizer=keras.optimizers.Adam())
-
-    # # Define some callbacks to improve training.
-    # early_stopping = keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)
-    # reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=5)
-
-    # Define modifiable training hyperparameters.
-    epochs = 20
-    batch_size = 4
-
-    # Fit the model to the training data.
-    model.fit(
-        train_dataset,
-        val_dataset,
-        batch_size=batch_size,
-        epochs=epochs,
-        #callbacks=[early_stopping, reduce_lr],
-    )
-
-    model.save('Model/trained_model')
-
-    model = keras.models.load_model('Model/trained_model')
-
-    # Pick the first/last four frames from the example.
-    frames = test_training_dataset[0]
-    original_frames = test_validation_dataset[0]
-
-    # Predict a new set of 4 frames.
-    for _ in range(4):
-        # Extract the model's prediction and post-process it.
-        new_prediction = model.predict(np.expand_dims(frames, axis=0))
-        new_prediction = np.squeeze(new_prediction, axis=0)
-        predicted_frame = np.expand_dims(new_prediction[-1, ...], axis=0)
-
-        # Extend the set of prediction frames.
-        frames = np.concatenate((frames, predicted_frame), axis=0)
-
-    # Construct a figure for the original and new frames.
-    fig, axes = plt.subplots(2, 4, figsize=(20, 4))
-
-    # Plot the original frames.
-    for idx, ax in enumerate(axes[0]):
-        ax.imshow(np.squeeze(original_frames[idx]), cmap="gray")
-        ax.set_title(f"Frame {idx}")
-        ax.axis("off")
-
-    # Plot the new frames.
-    new_frames = frames[4:, ...]
-    for idx, ax in enumerate(axes[1]):
-        ax.imshow(np.squeeze(new_frames[idx]), cmap="gray")
-        ax.set_title(f"Frame {idx}")
-        ax.axis("off")
-
-    # Display the figure.
-    plt.show()
+    # batch_size = 4
+    # from_frame = int(600/batch_size)
+    # to_frame = int(1400/batch_size)
+    #
+    # training_dataset = keras.utils.image_dataset_from_directory('ucsdpeds/vidf',
+    #                                                             image_size=(158, 238),
+    #                                                             color_mode="grayscale",
+    #                                                             shuffle=False,
+    #                                                             batch_size=batch_size)
+    #
+    # validation_dataset = keras.utils.image_dataset_from_directory('vidf-cvpr-density-map',
+    #                                                               image_size=(158, 238),
+    #                                                               color_mode="grayscale",
+    #                                                               shuffle=False,
+    #                                                               batch_size=batch_size)
+    #
+    # train_dataset = np.zeros((200, 4, 158, 238, 1))
+    # val_dataset = np.zeros((200, 4, 158, 238, 1))
+    # test_training_dataset = np.zeros((150, 4, 158, 238, 1))
+    # test_validation_dataset = np.zeros((150, 4, 158, 238, 1))
+    #
+    # count = 0
+    # test = 0
+    # for images, labels in training_dataset.take(to_frame):
+    #     count += 1
+    #     if count < (from_frame + 1):
+    #         images = tf.cast(images / 255., tf.float32)
+    #         test_training_dataset[count - (from_frame + 1)] = images
+    #         continue
+    #     # for i in range(batch_size):
+    #     #     print(training_dataset.class_names[labels[i]])
+    #     #     test += 1
+    #     images = tf.cast(images / 255., tf.float32)
+    #     train_dataset[count - (from_frame + 1)] = images
+    # # print(f'Loaded a total of {test} images and {count - from_frame} batches to the training dataset')
+    #
+    # count = 0
+    # test = 0
+    # for images, labels in validation_dataset.take(to_frame):
+    #     count += 1
+    #     if count < (from_frame + 1):
+    #         images = tf.cast(images / 255., tf.float32)
+    #         test_validation_dataset[count - (from_frame + 1)] = images
+    #         continue
+    #     # for i in range(batch_size):
+    #     #     print(validation_dataset.class_names[labels[i]])
+    #     #     test += 1
+    #     images = tf.cast(images / 255., tf.float32)
+    #     val_dataset[count - (from_frame + 1)] = images
+    # # print(f'Loaded a total of {test} images and {count - from_frame} batches to the validation dataset')
+    #
+    # # x_train, y_train = create_shifted_frames(train_dataset)
+    # # x_val, y_val = create_shifted_frames(val_dataset)
+    #
+    # print("Training Dataset Shapes: " + str(train_dataset.shape))
+    # print("Validation Dataset Shapes: " + str(val_dataset.shape))
+    #
+    # # Construct the input layer with no definite frame size.
+    # inp = layers.Input(shape=(None, *train_dataset.shape[2:]))
+    #
+    # # We will construct 4 `ConvLSTM2D` layers with batch normalization,
+    # # followed by a `Conv3D` layer for the spatiotemporal outputs.
+    # x = layers.ConvLSTM2D(
+    #     filters=128,
+    #     kernel_size=(5, 5),
+    #     padding="same",
+    #     return_sequences=True,
+    #     activation="relu",
+    # )(inp)
+    # x = layers.BatchNormalization()(x)
+    # x = layers.ConvLSTM2D(
+    #     filters=64,
+    #     kernel_size=(5, 5),
+    #     padding="same",
+    #     return_sequences=True,
+    #     activation="relu",
+    # )(x)
+    # x = layers.BatchNormalization()(x)
+    # x = layers.ConvLSTM2D(
+    #     filters=64,
+    #     kernel_size=(5, 5),
+    #     padding="same",
+    #     return_sequences=True,
+    #     activation="relu",
+    # )(x)
+    # x = layers.BatchNormalization()(x)
+    # x = layers.ConvLSTM2D(
+    #     filters=64,
+    #     kernel_size=(5, 5),
+    #     padding="same",
+    #     return_sequences=True,
+    #     activation="relu",
+    # )(x)
+    #
+    # x = layers.Conv3D(filters=1, kernel_size=(1, 1, 1), activation="sigmoid", padding="same")(x)
+    #
+    # # Next, we will build the complete model and compile it.
+    # model = keras.models.Model(inp, x)
+    # model.compile(loss=keras.losses.binary_crossentropy, optimizer=keras.optimizers.Adam())
+    #
+    # # # Define some callbacks to improve training.
+    # # early_stopping = keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)
+    # # reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=5)
+    #
+    # # Define modifiable training hyperparameters.
+    # epochs = 20
+    # batch_size = 4
+    #
+    # # Fit the model to the training data.
+    # model.fit(
+    #     train_dataset,
+    #     val_dataset,
+    #     batch_size=batch_size,
+    #     epochs=epochs,
+    #     #callbacks=[early_stopping, reduce_lr],
+    # )
+    #
+    # model.save('Model/trained_model')
+    #
+    # model = keras.models.load_model('Model/trained_model')
+    #
+    # # Pick the first/last four frames from the example.
+    # frames = test_training_dataset[0]
+    # original_frames = test_validation_dataset[0]
+    #
+    # # Predict a new set of 4 frames.
+    # for _ in range(4):
+    #     # Extract the model's prediction and post-process it.
+    #     new_prediction = model.predict(np.expand_dims(frames, axis=0))
+    #     new_prediction = np.squeeze(new_prediction, axis=0)
+    #     predicted_frame = np.expand_dims(new_prediction[-1, ...], axis=0)
+    #
+    #     # Extend the set of prediction frames.
+    #     frames = np.concatenate((frames, predicted_frame), axis=0)
+    #
+    # # Construct a figure for the original and new frames.
+    # fig, axes = plt.subplots(2, 4, figsize=(20, 4))
+    #
+    # # Plot the original frames.
+    # for idx, ax in enumerate(axes[0]):
+    #     ax.imshow(np.squeeze(original_frames[idx]), cmap="gray")
+    #     ax.set_title(f"Frame {idx}")
+    #     ax.axis("off")
+    #
+    # # Plot the new frames.
+    # new_frames = frames[4:, ...]
+    # for idx, ax in enumerate(axes[1]):
+    #     ax.imshow(np.squeeze(new_frames[idx]), cmap="gray")
+    #     ax.set_title(f"Frame {idx}")
+    #     ax.axis("off")
+    #
+    # # Display the figure.
+    # plt.show()
 
 
