@@ -6,6 +6,10 @@ import numpy as np
 import scipy.io as scio
 import math
 import cv2
+import matplotlib.image as mpimg
+from PIL import Image
+from scipy.io import loadmat
+import matplotlib.pyplot as plt
 
 
 
@@ -121,22 +125,56 @@ def random_mini_batches(X,Y,mini_batch_size = 1 , seed = 0):
     return mini_batches
 
 
+def loadDensityMap(vidNum, frameNum):
+    # Checking if video and frame number is lower than 1
+    if frameNum < 1 or vidNum < 1:
+        print("Video or frame number smaller than 1 does not exist.")
+        return
 
-def DataLoader(x_file_path = "./UCSD_x_data.mat" , 
-               y_file_path = "./UCSD_label_data.mat" , 
+    # Formatting video number and frame number for loading
+    vidNum = "{0:0=3d}".format(vidNum - 1)
+    frameNum = "{0:0=3d}".format(frameNum)
+    loadedDensityMap = np.array(Image.open(f'C:/Users/nik97/Desktop/Computer Vision/vidf-cvpr-density-map/vidf1_33_{vidNum}.y/vidf1_33_{vidNum}_f{frameNum}.png').convert("L"))/255
+    return np.reshape(loadedDensityMap, (loadedDensityMap.shape[0], loadedDensityMap.shape[1], 1))
+
+def loadImage(vidNum, frameNum):
+    # Checking if video and frame number is lower than 1
+    if frameNum < 1 or vidNum < 1:
+        print("Video or frame number smaller than 1 does not exist.")
+        return
+
+    # Formatting video number and frame number for loading
+    vidNum = "{0:0=3d}".format(vidNum - 1)
+    frameNum = "{0:0=3d}".format(frameNum)
+    loadedImage = mpimg.imread(f'C:/Users/nik97/Desktop/Computer Vision/ucsdpeds/vidf/vidf1_33_{vidNum}.y/vidf1_33_{vidNum}_f{frameNum}.png')
+    return np.reshape(loadedImage, (loadedImage.shape[0], loadedImage.shape[1], 1))
+
+
+def loadROI():
+    # Loading video ROI
+    loadedROI = loadmat(f'C:/Users/nik97/Desktop/Computer Vision/vidf-cvpr/vidf1_33_roi_mainwalkway.mat')
+    loadedROI = loadedROI['roi'][0][0][2]
+    return np.reshape(loadedROI, (loadedROI.shape[0], loadedROI.shape[1], 1))
+
+def DataLoader(#x_file_path = "./UCSD_x_data.mat" ,
+               #y_file_path = "./UCSD_label_data.mat" ,
                data_aug = False , time_step = 10):
     
     
-    X_data_orig = scio.loadmat(x_file_path)
+    X_data_orig = np.zeros((10, 200, 158, 238, 1))
     
-    Y_data_orig = scio.loadmat(y_file_path)
+    Y_data_orig = np.zeros((10, 200, 158, 238, 1))
 
-    ROI = Y_data_orig["roi"].reshape((158,238,1))
+    for vidNum in range(1, 11):
+        for frameNum in range(1, 201):
+            X_data_orig[vidNum - 1][frameNum - 1] = loadImage(vidNum, frameNum)
+            Y_data_orig[vidNum - 1][frameNum - 1] = loadDensityMap(vidNum, frameNum)
 
+    ROI = loadROI()
 
-    X = X_data_orig["X"][:,:] * ROI
+    X = X_data_orig[:, :] * ROI
     
-    Y = Y_data_orig["density_map"][:,:] * ROI
+    Y = Y_data_orig[:, :] * ROI
 
 
     train_index = [3,4,5,6]
@@ -159,13 +197,14 @@ def DataLoader(x_file_path = "./UCSD_x_data.mat" ,
     else:
         pass
 
-    X_train = X_train.reshape([-1,time_step,158,238,1])
+    X_train = X_train.reshape([-1, time_step, 158, 238, 1])
     
-    X_test = X_test.reshape([-1,time_step,158,238,1])
+    X_test = X_test.reshape([-1, time_step, 158, 238, 1])
 
-    Y_train = Y_train.reshape([-1,time_step,158,238,1])
+    Y_train = Y_train.reshape([-1, time_step, 158, 238, 1])
     
-    Y_test = Y_test.reshape([-1,time_step,158,238,1])
+    Y_test = Y_test.reshape([-1, time_step, 158, 238, 1])
+
 
     
  
@@ -183,3 +222,5 @@ def data_augmentation(X , Y):
     Y = np.concatenate((Y,Y_flip),axis = 0)
     
     return X , Y
+
+

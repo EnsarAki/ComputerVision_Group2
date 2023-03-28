@@ -66,9 +66,10 @@ def loadDensityMap(vidNum, frameNum):
         return
 
     # Formatting video number and frame number for loading
-    vidNum = "{0:0=1d}".format(vidNum - 1)
-    frameNum = "{0:0=1d}".format(frameNum)
-    return np.array(Image.open(f'vidf-cvpr-density-map/vidf1_33_{vidNum}_f{frameNum}.png').convert("L"))/255
+    vidNum = "{0:0=3d}".format(vidNum - 1)
+    frameNum = "{0:0=3d}".format(frameNum)
+    loadedDensityMap = np.array(Image.open(f'vidf-cvpr-density-map/vidf1_33_{vidNum}.y/vidf1_33_{vidNum}_f{frameNum}.png').convert("L"))/255
+    return np.reshape(loadedDensityMap, (loadedDensityMap.shape[0], loadedDensityMap.shape[1], 1))
 
 def gaussian_filter_density(gt):
     density = np.zeros(gt.shape, dtype=np.float32)
@@ -126,8 +127,8 @@ def create_shifted_frames(data):
 
 
 if __name__ == '__main__':
-
-    prepareImages()
+    pass
+    #prepareImages()
 
     # batch_size = 4
     # from_frame = int(600/batch_size)
