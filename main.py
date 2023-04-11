@@ -14,10 +14,8 @@ import re
 import tensorflow as tf
 from tensorflow import keras
 from keras import layers
+from keras import backend as K
 
-import io
-import imageio
-from ipywidgets import widgets, Layout, HBox
 
 def loadROI():
     # Loading video ROI
@@ -116,8 +114,8 @@ def prepareImages():
             # plt.imshow(img_density, cmap=CM.jet)
             # plt.show()
             # print(location.shape[0] - np.sum(img_density))
+            np.save(f'vidf-cvpr-density-map/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}.y/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}_f{"{0:0=3d}".format(frameNum)}', img_density)
 
-            mpimg.imsave(f'vidf-cvpr-density-map/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}.y/vidf1_33_{"{0:0=3d}".format(vidNum - 1)}_f{"{0:0=3d}".format(frameNum)}.png', img_density, format='png', cmap="gray")
 
 
 def create_shifted_frames(data):
@@ -127,8 +125,7 @@ def create_shifted_frames(data):
 
 
 if __name__ == '__main__':
-    pass
-    #prepareImages()
+    # prepareImages()
 
     # batch_size = 4
     # from_frame = int(600/batch_size)
@@ -249,7 +246,10 @@ if __name__ == '__main__':
     #
     # model.save('Model/trained_model')
     #
-    # model = keras.models.load_model('Model/trained_model')
+
+
+
+    pass
     #
     # # Pick the first/last four frames from the example.
     # frames = test_training_dataset[0]

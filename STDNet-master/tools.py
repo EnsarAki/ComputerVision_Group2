@@ -17,21 +17,21 @@ def compute_cost(y_hat , y):
     
     a = (y_hat - y)     
     
-    return 0.5*tf.reduce_mean(tf.reduce_sum( tf.multiply(a , a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
+    return 0.5*tf.compat.v1.reduce_mean(tf.compat.v1.reduce_sum( tf.compat.v1.multiply(a , a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
 
 
 
 def compute_MAE_and_MSE(y_hat , y_gt):
+
+    y_sum = tf.compat.v1.reduce_sum(y_hat , axis=[2,3,4])
     
-    y_sum = tf.reduce_sum(y_hat , axis=[2,3,4])
-    
-    y = tf.reduce_sum(y_gt , axis = [2,3,4])
-    
+    y = tf.compat.v1.reduce_sum(y_gt , axis = [2,3,4])
+
     difference = ( y_sum - y )
     
-    MAE = tf.reduce_sum(tf.abs(difference))
+    MAE = tf.compat.v1.reduce_sum(tf.compat.v1.abs(difference))
     
-    MSE = tf.reduce_sum(tf.square(difference))
+    MSE = tf.compat.v1.reduce_sum(tf.compat.v1.square(difference))
     
     return (MAE , MSE)
 
@@ -51,48 +51,48 @@ def PRL(y_hat , y , ver = None):
     gaussian_w_5 = np.reshape(gaussian_w_5 , [5,5,1,1])
 
     
-    gaussian_w_3 = tf.constant(gaussian_w_3 , tf.float32)
-    gaussian_w_5 = tf.constant(gaussian_w_5 , tf.float32)
+    gaussian_w_3 = tf.compat.v1.constant(gaussian_w_3 , tf.float32)
+    gaussian_w_5 = tf.compat.v1.constant(gaussian_w_5 , tf.float32)
     
     
-    shape = tf.shape(y_hat)
+    shape = tf.compat.v1.shape(y_hat)
     
     a = (y_hat - y)
     if ver == "L2":
-        cost_1 = 0.5*tf.reduce_mean(tf.reduce_sum( tf.multiply(a , a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)  
+        cost_1 = 0.5*tf.compat.v1.reduce_mean(tf.compat.v1.reduce_sum( tf.compat.v1.multiply(a , a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
     elif ver == "L1":
-        cost_1 = tf.reduce_mean(tf.reduce_sum( tf.abs(a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)  
+        cost_1 = tf.compat.v1.reduce_mean(tf.compat.v1.reduce_sum( tf.compat.v1.abs(a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
 
         
-    y_hat = tf.reshape(y_hat , [shape[0]* shape[1] , shape[2] , shape[3] , shape[4]])
+    y_hat = tf.compat.v1.reshape(y_hat , [shape[0]* shape[1] , shape[2] , shape[3] , shape[4]])
     
-    y = tf.reshape(y , [shape[0]* shape[1] , shape[2] , shape[3] , shape[4]])
+    y = tf.compat.v1.reshape(y , [shape[0]* shape[1] , shape[2] , shape[3] , shape[4]])
 
     y_hat_gau_3 = tf.compat.v1.nn.conv2d(y_hat , gaussian_w_3 , strides=[1,1,1,1] ,  padding="SAME")
-    
+
     y_gau_3 =  tf.compat.v1.nn.conv2d(y , gaussian_w_3 , strides=[1,1,1,1] ,  padding="SAME")
-    
+
     y_hat_gau_5 = tf.compat.v1.nn.conv2d(y_hat , gaussian_w_5 , strides=[1,1,1,1] ,  padding="SAME")
-    
+
     y_gau_5 =  tf.compat.v1.nn.conv2d(y , gaussian_w_5 , strides=[1,1,1,1] ,  padding="SAME")
 
     
-    y_hat = tf.reshape(y_hat_gau_3 , [shape[0] ,  shape[1] , shape[2] , shape[3] , shape[4]])
-    y     = tf.reshape(y_gau_3     , [shape[0] ,  shape[1] , shape[2] , shape[3] , shape[4]])       
+    y_hat = tf.compat.v1.reshape(y_hat_gau_3 , [shape[0] ,  shape[1] , shape[2] , shape[3] , shape[4]])
+    y     = tf.compat.v1.reshape(y_gau_3     , [shape[0] ,  shape[1] , shape[2] , shape[3] , shape[4]])
     a = (y_hat - y)
     if ver =="L2":
-        cost_2 = 0.5*tf.reduce_mean(tf.reduce_sum( tf.multiply(a , a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
+        cost_2 = 0.5*tf.compat.v1.reduce_mean(tf.compat.v1.reduce_sum( tf.compat.v1.multiply(a , a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
     elif ver == "L1":
-        cost_2 = tf.reduce_mean(tf.reduce_sum( tf.abs(a) , axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
+        cost_2 = tf.compat.v1.reduce_mean(tf.compat.v1.reduce_sum( tf.compat.v1.abs(a) , axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
  
 
-    y_hat = tf.reshape(y_hat_gau_5 , [shape[0] ,  shape[1] , shape[2] , shape[3] , shape[4]])
-    y     = tf.reshape(y_gau_5     , [shape[0] ,  shape[1] , shape[2] , shape[3] , shape[4]])       
+    y_hat = tf.compat.v1.reshape(y_hat_gau_5 , [shape[0] ,  shape[1] , shape[2] , shape[3] , shape[4]])
+    y     = tf.compat.v1.reshape(y_gau_5     , [shape[0] ,  shape[1] , shape[2] , shape[3] , shape[4]])
     a = (y_hat - y)
     if ver == "L2":
-        cost_3 = 0.5*tf.reduce_mean(tf.reduce_sum( tf.multiply(a , a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)    
+        cost_3 = 0.5*tf.compat.v1.reduce_mean(tf.compat.v1.reduce_sum( tf.compat.v1.multiply(a , a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
     elif ver == "L1":
-        cost_3 = tf.reduce_mean(tf.reduce_sum( tf.abs(a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)    
+        cost_3 = tf.compat.v1.reduce_mean(tf.compat.v1.reduce_sum( tf.compat.v1.abs(a), axis = [2,3,4] ,keepdims=False) , axis = [0,1] , keepdims = False)
    
         
     return cost_1 + 15 * cost_2 + 3 * cost_3
@@ -134,7 +134,7 @@ def loadDensityMap(vidNum, frameNum):
     # Formatting video number and frame number for loading
     vidNum = "{0:0=3d}".format(vidNum - 1)
     frameNum = "{0:0=3d}".format(frameNum)
-    loadedDensityMap = np.array(Image.open(f'C:/Users/nik97/Desktop/Computer Vision/vidf-cvpr-density-map/vidf1_33_{vidNum}.y/vidf1_33_{vidNum}_f{frameNum}.png').convert("L"))/255
+    loadedDensityMap = np.load(f'C:/Users/nik97/Desktop/Computer Vision/vidf-cvpr-density-map/vidf1_33_{vidNum}.y/vidf1_33_{vidNum}_f{frameNum}.npy')
     return np.reshape(loadedDensityMap, (loadedDensityMap.shape[0], loadedDensityMap.shape[1], 1))
 
 def loadImage(vidNum, frameNum):
@@ -176,7 +176,6 @@ def DataLoader(#x_file_path = "./UCSD_x_data.mat" ,
     
     Y = Y_data_orig[:, :] * ROI
 
-
     train_index = [3,4,5,6]
     
     test_index = [0,1,2,7,8,9]
@@ -197,14 +196,13 @@ def DataLoader(#x_file_path = "./UCSD_x_data.mat" ,
     else:
         pass
 
-    X_train = X_train.reshape([-1, time_step, 158, 238, 1])
+    X_train = X_train.reshape([-1, time_step, 158, 238, 1]).astype(np.float32)
     
-    X_test = X_test.reshape([-1, time_step, 158, 238, 1])
+    X_test = X_test.reshape([-1, time_step, 158, 238, 1]).astype(np.float32)
 
-    Y_train = Y_train.reshape([-1, time_step, 158, 238, 1])
+    Y_train = Y_train.reshape([-1, time_step, 158, 238, 1]).astype(np.float32)
     
-    Y_test = Y_test.reshape([-1, time_step, 158, 238, 1])
-
+    Y_test = Y_test.reshape([-1, time_step, 158, 238, 1]).astype(np.float32)
 
     
  
