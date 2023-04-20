@@ -7,7 +7,7 @@ import scipy
 from PIL import Image
 import time
 import matplotlib.pyplot as plt
-
+from matplotlib import cm as CM
 
 from VGG_backbone import VGG_10
 import tools
@@ -160,15 +160,15 @@ def Temporal_Channel_Aware_Block(x, name=None):
         return z
 
 
-def Training(batch_SIZE=None, time_step=None, Epoch=None, lr=None):
-    X_train, Y_train, X_test, Y_test = tools.DataLoader(data_aug=True)
+def Training(dataset, batch_SIZE=None, time_step=None, Epoch=None, lr=None):
+    X_train, Y_train, X_test, Y_test, frame_size = tools.DataLoader(data_aug=True, time_step=time_step, dataset=dataset)
 
     VGG = VGG_10()
 
-    x = tf.compat.v1.placeholder(dtype=tf.compat.v1.float32, shape=[batch_SIZE, time_step, 158, 238, 1])
-    y = tf.compat.v1.placeholder(dtype=tf.compat.v1.float32, shape=[batch_SIZE, time_step, 158, 238, 1])
+    x = tf.compat.v1.placeholder(dtype=tf.compat.v1.float32, shape=[batch_SIZE, time_step, frame_size[0], frame_size[1], 1])
+    y = tf.compat.v1.placeholder(dtype=tf.compat.v1.float32, shape=[batch_SIZE, time_step, frame_size[0], frame_size[1], 1])
 
-    x_reshape = tf.compat.v1.reshape(x, [-1, 158, 238, 1])
+    x_reshape = tf.compat.v1.reshape(x, [-1, frame_size[0], frame_size[1], 1])
 
     LR = tf.compat.v1.placeholder(tf.compat.v1.float32)
 
@@ -229,8 +229,8 @@ def Training(batch_SIZE=None, time_step=None, Epoch=None, lr=None):
 
     z = dilated_conv2d(z, 512, 128, 1, "128")
     z = dilated_conv2d(z, 128, 64, 1, "64")
-    z = output_adjust(z, [158, 238], 1, "End")
-    z = tf.compat.v1.reshape(z, [batch_SIZE, time_step, 158, 238, 1])
+    z = output_adjust(z, [frame_size[0], frame_size[1]], 1, "End")
+    z = tf.compat.v1.reshape(z, [batch_SIZE, time_step, frame_size[0], frame_size[1], 1])
 
     all_variable = tf.compat.v1.trainable_variables()
     Reg_Loss = 1e-4 * tf.compat.v1.reduce_sum([tf.compat.v1.nn.l2_loss(v) for v in all_variable])
@@ -249,6 +249,8 @@ def Training(batch_SIZE=None, time_step=None, Epoch=None, lr=None):
 
     with tf.compat.v1.Session() as sess:
 
+        best_cost = 0
+
         print("-----------------------------------------------------------------------------\n")
         print("\nStart Training...\n")
         print("Number of parameters : ",
@@ -257,14 +259,15 @@ def Training(batch_SIZE=None, time_step=None, Epoch=None, lr=None):
         Time = 0
         seed = 0
 
-        train_writer = tf.compat.v1.summary.FileWriter("./logs/train", sess.graph)
-        test_writer = tf.compat.v1.summary.FileWriter("./logs/test", sess.graph)
+        saver = tf.compat.v1.train.Saver()
+
+        # train_writer = tf.compat.v1.summary.FileWriter("./logs/train", sess.graph)
+        # test_writer = tf.compat.v1.summary.FileWriter("./logs/test", sess.graph)
 
         sess.graph.finalize()
         sess.run(initial)
 
         for epoch in range(Epoch + 1):
-
             if epoch == 30:
                 lr = lr / 2
             if epoch == 60:
@@ -285,11 +288,12 @@ def Training(batch_SIZE=None, time_step=None, Epoch=None, lr=None):
             for data in minibatches:
                 (X_train_batch, Y_train_batch) = data
 
-                _, temp_cost, train_performance, train_prediction, train_validation = sess.run([optimizer, cost, performance, predicted_images, validation_images],
-                                                                                               feed_dict={x: X_train_batch,
-                                                                                               y: Y_train_batch,
-                                                                                               LR: lr,
-                                                                                              })
+                _, temp_cost, train_performance, train_prediction, train_validation = sess.run(
+                    [optimizer, cost, performance, predicted_images, validation_images],
+                    feed_dict={x: X_train_batch,
+                               y: Y_train_batch,
+                               LR: lr,
+                               })
                 # fig = plt.figure()
                 # fig.add_subplot(1, 2, 1)
                 # plt.imshow(train_prediction[0, 0], cmap='gray')
@@ -312,6 +316,14 @@ def Training(batch_SIZE=None, time_step=None, Epoch=None, lr=None):
             total_MSE = round(np.sqrt(mini_batch_MSE), 4)
 
             print("Epoch : ", epoch, " , Cost :  ", total_cost, " , MAE : ", total_MAE, ", MSE : ", total_MSE)
+            if best_cost == 0:
+                best_cost = total_cost
+                saver.save(sess, './Model/model.ckpt')
+                print("Checkpoint saved")
+            elif best_cost > total_cost:
+                best_cost = total_cost
+                saver.save(sess, './Model/model.ckpt')
+                print("Checkpoint saved")
 
             if True:
 
@@ -329,8 +341,6 @@ def Training(batch_SIZE=None, time_step=None, Epoch=None, lr=None):
                     test_MAE += test_performance[0] / (X_test.shape[0] * X_test.shape[1])
                     test_MSE += test_performance[1] / (X_test.shape[0] * X_test.shape[1])
 
-
-
                 test_cost = round(test_cost, 7)
                 test_MAE = round(test_MAE, 4)
                 test_MSE = round(np.sqrt(test_MSE), 4)
@@ -342,11 +352,156 @@ def Training(batch_SIZE=None, time_step=None, Epoch=None, lr=None):
 
             if epoch % 5 == 0:
                 print("Average training time  per epoch : ", Time)
-
-        sess.graph._unsafe_unfinalize()
-        saver = tf.compat.v1.train.Saver()
-        saver.save(sess, './Model/model.ckpt')
     print("Done.\n")
+
+
+def load_pretrained_model(dataset, batch_SIZE=None, time_step=None, lr=None, save_predictions=False):
+    X_train, Y_train, X_test, Y_test, frame_size = tools.DataLoader(data_aug=True, time_step=time_step, dataset=dataset)
+
+    VGG = VGG_10()
+
+    x = tf.compat.v1.placeholder(dtype=tf.compat.v1.float32, shape=[batch_SIZE, time_step, frame_size[0], frame_size[1], 1])
+    y = tf.compat.v1.placeholder(dtype=tf.compat.v1.float32, shape=[batch_SIZE, time_step, frame_size[0], frame_size[1], 1])
+
+    x_reshape = tf.compat.v1.reshape(x, [-1, frame_size[0], frame_size[1], 1])
+
+    LR = tf.compat.v1.placeholder(tf.compat.v1.float32)
+
+    z = resize_and_adjust_channel(x_reshape, [316, 476], 3, "Start")
+    z = VGG.forward(z)
+
+    S_1 = Dense_Spatial_Block(z, "DSB_1")
+    S_1 = Spatial_Channel_Aware_Block(S_1, "SCA_1")
+    z_1 = S_1
+
+    z = tf.compat.v1.reshape(z_1, [batch_SIZE, time_step, tf.compat.v1.shape(z)[1], tf.compat.v1.shape(z)[2],
+                                   tf.compat.v1.shape(z)[3]], name="Reshape_S_T")
+
+    T_1 = Dense_Temporal_Block(z, "DTB_1")
+    T_1 = Temporal_Channel_Aware_Block(T_1, "TCA_1")
+    z_1 = T_1
+
+    z = tf.compat.v1.reshape(z_1, [-1, tf.compat.v1.shape(z)[2], tf.compat.v1.shape(z)[3], tf.compat.v1.shape(z)[4]])
+
+    S_2 = Dense_Spatial_Block(z, "DSB_2")
+    S_2 = Spatial_Channel_Aware_Block(S_2, "SCA_2")
+    z_2 = S_2
+
+    z = tf.compat.v1.reshape(z_2, [batch_SIZE, time_step, tf.compat.v1.shape(z)[1], tf.compat.v1.shape(z)[2],
+                                   tf.compat.v1.shape(z)[3]], name="Reshape_S_T")
+
+    T_2 = Dense_Temporal_Block(z, "DTB_2")
+    T_2 = Temporal_Channel_Aware_Block(T_2, "TCA_2")
+    z_2 = T_2
+
+    z = tf.compat.v1.reshape(z_2, [-1, tf.compat.v1.shape(z)[2], tf.compat.v1.shape(z)[3], tf.compat.v1.shape(z)[4]])
+
+    S_3 = Dense_Spatial_Block(z, "DSB_3")
+    S_3 = Spatial_Channel_Aware_Block(S_3, "SCA_3")
+    z_3 = S_3
+
+    z = tf.compat.v1.reshape(z_3, [batch_SIZE, time_step, tf.compat.v1.shape(z)[1], tf.compat.v1.shape(z)[2],
+                                   tf.compat.v1.shape(z)[3]], name="Reshape_S_T")
+
+    T_3 = Dense_Temporal_Block(z, "DTB_3")
+    T_3 = Temporal_Channel_Aware_Block(T_3, "TCA_3")
+    z_3 = T_3
+
+    z = tf.compat.v1.reshape(z_3, [-1, tf.compat.v1.shape(z)[2], tf.compat.v1.shape(z)[3], tf.compat.v1.shape(z)[4]])
+
+    S_4 = Dense_Spatial_Block(z, "DSB_4")
+    S_4 = Spatial_Channel_Aware_Block(S_4, "SCA_4")
+    z_4 = S_4
+
+    z = tf.compat.v1.reshape(z_4, [batch_SIZE, time_step, tf.compat.v1.shape(z)[1], tf.compat.v1.shape(z)[2],
+                                   tf.compat.v1.shape(z)[3]], name="Reshape_S_T")
+
+    T_4 = Dense_Temporal_Block(z, "DTB_4")
+    T_4 = Temporal_Channel_Aware_Block(T_4, "TCA_4")
+    z_4 = T_4
+
+    z = tf.compat.v1.reshape(z_4, [-1, tf.compat.v1.shape(z)[2], tf.compat.v1.shape(z)[3], tf.compat.v1.shape(z)[4]])
+
+    z = dilated_conv2d(z, 512, 128, 1, "128")
+    z = dilated_conv2d(z, 128, 64, 1, "64")
+    z = output_adjust(z, [frame_size[0], frame_size[1]], 1, "End")
+    z = tf.compat.v1.reshape(z, [batch_SIZE, time_step, frame_size[0], frame_size[1], 1])
+
+    all_variable = tf.compat.v1.trainable_variables()
+    Reg_Loss = 1e-4 * tf.compat.v1.reduce_sum([tf.compat.v1.nn.l2_loss(v) for v in all_variable])
+
+    cost = tools.PRL(z, y, "L1")
+    cost = cost + Reg_Loss
+
+    performance = tools.compute_MAE_and_MSE(z, y)
+
+    predicted_images = z
+    validation_images = y
+
+    optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=LR).minimize(cost)
+
+    with tf.compat.v1.Session() as sess:
+
+        Time = 0
+        seed = 0
+        counter = 0
+
+        saver = tf.compat.v1.train.import_meta_graph('./Model/model.ckpt.meta')
+        saver.restore(sess, tf.compat.v1.train.latest_checkpoint('./Model'))
+
+        start_time = time.time()
+
+        if True:
+            test_cost, test_MAE, test_MSE = 0, 0, 0
+            test_batches = tools.random_mini_batches(X_test, Y_test, batch_SIZE, seed=seed)
+
+            for i in test_batches:
+                (X_test_batch, Y_test_batch) = i
+
+                temp_cost, test_performance, test_prediction, test_validation = sess.run(
+                    [cost, performance, predicted_images, validation_images],
+                    feed_dict={x: X_test_batch, y: Y_test_batch, })
+
+                if save_predictions:
+                    for index in range(10):
+                        np.save(f'./Prediction/{counter}', test_prediction[0][index])
+                        np.save(f'./Validation/{counter}', test_validation[0][index])
+                        counter += 1
+
+                # print(f'Prediction sum: {np.sum(test_prediction[0, 0])} Validation sum: {np.sum(test_validation[0, 0])}')
+
+                test_cost += temp_cost * batch_SIZE * time_step / (X_test.shape[0] * X_test.shape[1])
+                test_MAE += test_performance[0] / (X_test.shape[0] * X_test.shape[1])
+                test_MSE += test_performance[1] / (X_test.shape[0] * X_test.shape[1])
+
+            test_cost = round(test_cost, 7)
+            test_MAE = round(test_MAE, 4)
+            test_MSE = round(np.sqrt(test_MSE), 4)
+
+            print("Testing , cost :  ", test_cost, " , MAE : ", test_MAE, " , MSE : ", test_MSE, "\n")
+
+        # saver.save(sess, './Model/model.ckpt')
+    print("Done.\n")
+
+
+def createPlots():
+    fig = plt.figure()
+    for i in range(1, 1201):
+        prediction = np.load(f'./Prediction/{i}.npy')
+        validation = np.load(f'./Validation/{i}.npy')
+
+        fig.add_subplot(1, 2, 1)
+        plt.axis('off')
+        plt.imshow(prediction, cmap=CM.jet)
+        plt.title("Prediction")
+
+        fig.add_subplot(1, 2, 2)
+        plt.axis('off')
+        plt.imshow(validation, cmap=CM.jet)
+        plt.title("Validation")
+
+        plt.savefig(f'./Plots/{i}', bbox_inches='tight')
+        plt.clf()
 
 
 if __name__ == "__main__":
@@ -355,13 +510,24 @@ if __name__ == "__main__":
 
     batch_SIZE = 1
 
-    time_step = 10
+    time_step = 10  # 10 for UCSD, 8 for mall
 
-    Epoch = 120
+    Epoch = 2
 
     lr = 1e-4
 
-    Training(batch_SIZE=batch_SIZE,
-             time_step=time_step,
-             Epoch=Epoch,
-             lr=lr)
+    dataset = 'mall'
+
+    # Training(batch_SIZE=batch_SIZE,
+    # time_step=time_step,
+    # Epoch=Epoch,
+    # lr=lr,
+    # dataset=dataset)
+
+    load_pretrained_model(batch_SIZE=batch_SIZE,
+                          time_step=time_step,
+                          lr=lr,
+                          dataset=dataset,
+                          save_predictions=True)
+
+    # createPlots()
