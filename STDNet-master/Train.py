@@ -172,7 +172,7 @@ def Training(dataset, batch_SIZE=None, time_step=None, Epoch=None, lr=None):
 
     LR = tf.compat.v1.placeholder(tf.compat.v1.float32)
 
-    z = resize_and_adjust_channel(x_reshape, [316, 476], 3, "Start")
+    z = resize_and_adjust_channel(x_reshape, [frame_size[0]*2, frame_size[1]*2], 3, "Start")
     z = VGG.forward(z)
 
     S_1 = Dense_Spatial_Block(z, "DSB_1")

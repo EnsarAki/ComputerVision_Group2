@@ -171,7 +171,6 @@ def loadROI(dataset):
 
 
 def DataLoader(dataset, data_aug=False, time_step=10):
-
     if dataset == 'ucsd':
         frame_size = (158, 238)
         X_data_orig = np.zeros((10, 200, frame_size[0], frame_size[1], 1))
